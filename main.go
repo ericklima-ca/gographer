@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
@@ -40,6 +40,8 @@ func setupMicrosoftLogin() (*oauth2.Config, string) {
 }
 
 func MicrosoftLogin(c *gin.Context) {
+	urlToRedirect := c.Query("source")
+	c.SetCookie("sourceURL", urlToRedirect, 0, "", "", true, true)
 	config, state := setupMicrosoftLogin()
 	redirectURL := config.AuthCodeURL(state)
 	c.Redirect(http.StatusSeeOther, redirectURL)
@@ -47,13 +49,13 @@ func MicrosoftLogin(c *gin.Context) {
 
 func MicrosoftCallback(c *gin.Context) {
 	code := c.Query("code")
+	sourceURL, _ := c.Cookie("sourceURL")
 	token, err := microsoftConfig.Exchange(context.Background(), code)
 	if err != nil {
 		_ = c.AbortWithError(http.StatusUnauthorized, err)
 		return
 	}
 	client := microsoftConfig.Client(context.TODO(), token)
-	log.Println(token)
 	userInfo, err := client.Get("https://graph.microsoft.com/v1.0/me")
 	if err != nil {
 		_ = c.AbortWithError(http.StatusBadRequest, err)
@@ -61,7 +63,6 @@ func MicrosoftCallback(c *gin.Context) {
 	}
 	defer userInfo.Body.Close()
 
-	fmt.Println(userInfo)
 	info, err := ioutil.ReadAll(userInfo.Body)
 	if err != nil {
 		_ = c.AbortWithError(http.StatusInternalServerError, err)
@@ -74,14 +75,13 @@ func MicrosoftCallback(c *gin.Context) {
 		_ = c.AbortWithError(http.StatusInternalServerError, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{
-		"displayName":    user.DisplayName,
-		"jobTitle":       user.JobTitle,
-		"id":             user.Id,
-		"mail":           user.Email,
-		"officeLocation": user.OfficeLocation,
-		"token":          getJWTToken(user.Email),
-	})
+	newURL, _ := url.Parse(sourceURL)
+	query, _ := url.ParseQuery(newURL.RawQuery)
+	query.Add("token", getJWTToken(user))
+	newURL.RawQuery = query.Encode()
+	c.Redirect(http.StatusSeeOther, newURL.String())
+	// c.JSON(http.StatusOK, gin.H{
+	//	// })
 	// redirectURL, err := url.Parse(IsLoginURL)
 	// if err != nil {
 	// _ = ctx.AbortWithError(http.StatusInternalServerError, err)
@@ -102,9 +102,14 @@ func MicrosoftCallback(c *gin.Context) {
 	// ctx.Redirect(http.StatusSeeOther, redirectURL.String())
 }
 
-func getJWTToken(email string) string {
+func getJWTToken(user models.User) string {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"email": email,
+		"email":          user.Email,
+		"displayName":    user.DisplayName,
+		"jobTitle":       user.JobTitle,
+		"id":             user.Id,
+		"mail":           user.Email,
+		"officeLocation": user.OfficeLocation,
 	})
 
 	secret := []byte(os.Getenv("JWT_SECRET"))

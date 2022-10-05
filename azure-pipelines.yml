@@ -1,0 +1,21 @@
+trigger:
+  - main
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+  - task: DockerInstaller@0
+    inputs:
+      dockerVersion: "17.09.0-ce"
+    displayName: "Install docker"
+
+  - script: |
+      docker login $(ACR_SERVER) -u $(ACR_USERNAME) -p $(ACR_TOKEN)
+    displayName: "Docker login"
+
+  - script: |
+      docker build -t $(ACR_SERVER)/gographer:latest .
+      docker push $(ACR_SERVER)/gographer:latest
+    displayName: "Docker build and push"
+

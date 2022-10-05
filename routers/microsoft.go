@@ -22,7 +22,7 @@ func setupMicrosoftLogin() (*oauth2.Config, string) {
 	microsoftConfig = &oauth2.Config{
 		ClientID:     os.Getenv("CLIENT_ID"),
 		ClientSecret: os.Getenv("CLIENT_SECRET"),
-		RedirectURL:  "http://localhost:8000/callback/microsoft",
+		RedirectURL:  os.Getenv("REDIRECT_URL"),
 		Scopes: []string{
 			"https://graph.microsoft.com/User.Read",
 		},
